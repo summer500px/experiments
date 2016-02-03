@@ -1,5 +1,5 @@
 # investigation of users registered before June 16
-
+# for experiment
 # ------------ <<Functions: Data Structurization for all users>> ------------
 
 # Step 1 - Getting cleaned full Registration Records
