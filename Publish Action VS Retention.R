@@ -2,12 +2,6 @@
 
 # ------------ <<Functions: Data Structurization for all users>> ------------
 
-# Cleaning
-
-# Sampling
-
-# Structuring
-
 # Step 1 - Getting cleaned full Registration Records
 
 GetCleanRegst = function(full_history){
@@ -16,7 +10,7 @@ GetCleanRegst = function(full_history){
   
   all.regist = list()
   all.regist$id = history$user_id[index_sign_up]
-  all.regist$time = round.POSIXt(as.POSIXlt(history$event_time[index_sign_up]),units = 'hours')
+  all.regist$regtime = round.POSIXt(as.POSIXlt(history$event_time[index_sign_up]),units = 'hours')
   
   # Sorting
   
@@ -34,7 +28,7 @@ GetCleanRegst = function(full_history){
   
   # Step 2: Getting the index (for 'all.regist') of Duplicates and Those having dissimilar registration Duplicates
   index_dupe = which(duplicated(all.regist$id))
-  index_dupe_disagree = index_dupe[which(all.regist$time[index_dupe]!=all.regist$time[index_dupe-1])]
+  index_dupe_disagree = index_dupe[which(all.regist$regtime[index_dupe]!=all.regist$regtime[index_dupe-1])]
   
   # Step 3: Deleting those having dissimilar duplicates & Keeping one record of those having similar duplicates
   
@@ -42,7 +36,7 @@ GetCleanRegst = function(full_history){
   label_keep=rep(1,n.all.regist);label_keep[index_rmv]=0 # labeling if to be kept
   
   clean.regist=subset(all.regist,label_keep==1)
-  clean.regist$time = as.POSIXlt(clean.regist$time)
+  clean.regist$regtime = as.POSIXlt(clean.regist$regtime)
   
   result = list(data=clean.regist,rate.dup=rate.duplicates)
   return(result)
@@ -53,16 +47,16 @@ GetCleanRegst = function(full_history){
 # (This is for Retention Measurement based on whether having actions during 21st - 28th day after registration)
 
 # Random Sample Selector (of size n.random)
-# Note: time.units = 'days' or 'hours'; it is the units of registration time for the output action data
+# Note: regtime.units = 'days' or 'hours'; it is the units of registration regtime for the output action data
 # (choosing 'hours' if considering registration hour factor)
 
 SubsetRegist=function(clean.regist, n.random){
   # getting deadline
-  deadline = max(clean.regist$time) - as.difftime(28,units='days') # can be modified
+  deadline = max(clean.regist$regtime) - as.difftime(28,units='days') # can be modified
   
-  subset.regist = clean.regist[which(clean.regist$time<deadline),];m=length(subset.regist$id)
+  subset.regist = clean.regist[which(clean.regist$regtime<deadline),];m=length(subset.regist$id)
   if (n.random != -1) {subset.regist = subset.regist[sample(1:m, n.random),] }
-  subset.regist$time = as.POSIXlt(subset.regist$time)$yday
+  subset.regist$regtime = as.POSIXlt(subset.regist$regtime)$yday
   n.subset.regist = length(clean.regist$id)
   
   result=list(data=subset.regist,n=n.subset.regist)
@@ -71,10 +65,10 @@ SubsetRegist=function(clean.regist, n.random){
 
 # Step 3 - Getting Corresponding Action Records of Step 2
 
-GetCleanAction=function(full.action,clean.regist){
+GetCleanAction=function(full.action,selected.regist){
   
   history=full.action
-  data_regist_full = clean.regist
+  data_regist_full = selected.regist
   
   # Extracting datalines of valid users from action history
   
@@ -85,28 +79,42 @@ GetCleanAction=function(full.action,clean.regist){
   
   summary = table(data_action_full_temp$user_id,data_action_full_temp$action)
   
-  data_action_full = data.frame(id=data_action_full_temp$user_id, time=data_action_full_temp$event_time,
-                                action=data_action_full_temp$action)
+#   data_action_full = data.frame(id=data_action_full_temp$user_id, time=data_action_full_temp$event_time,
+#                                 action=data_action_full_temp$action)
   
-  n.action_full = length(data_action_full$action)
-  
+  n.action_full = length(data_action_full_temp$action)
+  names(data_action_full_temp)[1:2]=c('time','id')
   # MultiAct Labels
   
   label.multiact = rowSums(summary)>1 # Logical
   n.regist_multiact=sum(as.numeric(label.multiact))
   
-  result=list(data=data_action_full,count.summary=summary,n=n.action_full,
+  result=list(data=data_action_full_temp,count.summary=summary,n=n.action_full,
               label=label.multiact,n.multi=n.regist_multiact)
   
 }
 
-# Step 4 - Joining Regist & Action Table, Structuration based on that
-
 # --------- <<Functions: Data Structurization for MultiAct Users only>> ---------
 
-
 # --- Structurization for Diff_time and Label
-StrctData_Multi=function(data_regist_sample, data_action_sample, label_multi_sample){
+# Method: Joining Regist & Action Table, Structuration based on that
+StrctData_Multi=function(data_regist_sample,data_action_sample,label_multi_sample){
+  data_regist_multiact = subset(data_regist_sample,label_multi_sample==T)
+  
+  # Constructing <Data_Action_MultiAct> (action history for multiact-user)
+  
+  data_action_multiact = data_action_sample[which(data_action_sample$id %in% data_regist_multiact$id),]
+  data_action_multiact = data_action_multiact[order(data_action_multiact$id),]
+  
+  rfmt_data_action = merge(x = data_action_multiact, y = data_regist_multiact, by = "id", all.x = TRUE) # Left outer join
+  rfmt_data_action$time_elps = rfmt_data_action$time - rfmt_data_action$regtime
+  
+  result=list(regist=data_regist_multiact,action=rfmt_data_action)
+  return(result)
+}
+
+# Alternative Method: Join/Merge Not Used
+StrctData2_Multi=function(data_regist_sample, data_action_sample, label_multi_sample){
   data_regist_multiact = data.frame(subset(data_regist_sample,label_multi_sample==T))
   
   # Constructing <Data_Action_MultiAct> (action history for multiact-user)
@@ -155,6 +163,7 @@ StrctData_Multi=function(data_regist_sample, data_action_sample, label_multi_sam
 retent_lable_wk4 = function(data_action_multiact,data_regist_multiact){
   retained_id = unique(data_action_multiact$id[which (data_action_multiact$time_elps >= 21 & data_action_multiact$time_elps <= 28)])
   retention_lable=rep(0,length(data_regist_multiact$id)); retention_lable[which(data_regist_multiact$id%in%retained_id)]=1
+  return(retention_lable)
 }
 
 # Predicor (Action Frequency/Binary) Reformator
@@ -211,7 +220,7 @@ rft_action_count=function(smr_tbl_action_count,group_cov,name_groupedcov){
   return(result)
 }
 
-# Training / Testing Cases Division
+# Training / Testing Cases Division (??? to be organized)
 
 dividing = function(predictor,response,n.train){
   n.cases = length(response)
@@ -228,12 +237,13 @@ dividing = function(predictor,response,n.train){
   return(result)
 }
 
-##################### Analysis #########################
+##################### Analysis Begins #########################
 
-# ======== Pre-Analysis (Only Modify/Rerun if Criteria for Retention changed) ==========
+# ======== Pre-Analysis ==========
 
 # <<Pre-Analysis: Inputting Data>> 
-history = read.csv('activities-2015-0607.csv',header=TRUE)
+history = read.csv('history_16Jan_unsorted.csv',header=FALSE)
+names(history)=c('event_time','user_id','client_application_id', 'action', 'to_id', 'ip')
 # <<Pre-Analysis: Structurizing Data>> 
 # Step 1: Getting and Cleaning Full Registration Data
 getresult1 = GetCleanRegst(history)
@@ -244,7 +254,7 @@ rate_dup = getresult1$rate.dup
 # Step 2: Subsetting Full Registration Data 
 # (Keeping all observations registered early enough so that retention status can be measured)
 
-getresult2 = SubsetRegist(d_regist_full)
+getresult2 = SubsetRegist(d_regist_full,26000)
 d_regist_subset = getresult2$data
 n_d_regist_subset = getresult2$n
 
@@ -263,7 +273,11 @@ n.regist_multi = getresult3$n.multi
 
 # <Analysis> Rate of Having further actions after registration 
 rate_multiact = n.regist_multi/length(d_regist_subset$id);rate_multiact
-d_action_subset$time_elps = diff_t
+
+# Step 4: 
+getresult4 = StrctData_Multi(d_regist_subset,d_action_subset,l_subset_multi)
+d_regist_subset_multi = getresult4$regist; d_action_subset_multi = getresult4$action
+d_regist_subset_multi$retention = retent_lable_wk4(d_action_subset_multi,d_regist_subset_multi)
 
 # ---------------- Summary Analysis: Strong/Weak Retention Rate Overview
 # rate_retention_subset = sum(l_subset_retention)/length(l_subset_retention)
@@ -280,30 +294,30 @@ d_action_subset$time_elps = diff_t
 # check: which(d_action_multi$time_elps<0); which(d_regist_multi$id != unique(d_action_multi$id))
 
 # <Getting y>
-retention = as.factor(d_regist_multi$retention)
+retention = as.factor(d_regist_subset_multi$retention)
 
 index_Ret = which(retention=='1');n.random2 = length(index_Ret)
 # index_cases = sort(c(sample(which(retention=='0'),n.random2),index_Ret))
-
-index_cases = sort(c(which(retention=='0'&rbinom(length(retention),1,0.12)),index_Ret))
+index_notRet = which(retention=='0')
+index_cases = sort(c(index_notRet[which(rbinom(length(index_notRet),1,0.09)==1)],index_Ret))
 
 y = retention[index_cases] # check: length(which(y=='0'))/length(which(y=='1'))
 
 # <Getting x> (Action Records Before 21st day since registration)
-# d = subset(d_action_multi,d_action_multi$time_elps<21)
-d = subset(d_action_multi,d_action_multi$time_elps==1)
-s_x = table(d$id,d$action)[index_cases,]
+# d = subset(d_action_subset_multi,d_action_subset_multi$time_elps<21)
+d = subset(d_action_subset_multi,d_action_subset_multi$id%in%d_regist_subset_multi$id[index_cases] & d_action_subset_multi$time_elps<21)
+s_x = table(d$id,d$action)
 
 # Grouping x
-xx = colnames(s_x); xx=xx[c(-22,-13)]
-x1 = c('photo_added_to_favorites','photo_comment','photo_published','photo_removed_from_favorites','photo_upload',
+xx = colnames(s_x); xx=xx[c(-27,-16)]
+x1 = c('photo_added_to_gallery','photo_comment','photo_published','photo_remove_vote','photo_upload',
        'photo_vote','follow_user')
 x2 = c('group_discussion_created','group_photo_discussion_deleted')
 
 # X as count predictor
-x_count = rft_action_count(s_x,as.list(xx),xx)
+# x_count = rft_action_count(s_x,as.list(xx),xx)
 
-# x_count = rft_action_count(s_x,as.list(x1),x1)
+x_count = rft_action_count(s_x,as.list(x1),x1)
 
 # X as binary factor
 # x_binary = rft_action_binary(s_x,list(x1,x2),c('Pos','Neg'))
@@ -320,17 +334,12 @@ x_freq = rft_action_freq(s_x,as.list(xx),xx)
 aa = rbinom(1:length(y),1,0.8)==1
 training_index = sort(which(aa==1));testing_index = sort(which(aa==0))
 
-xxforall = x_freq
+xxforall = x_count
 xtrain = xxforall[training_index,]
 ytrain = y[training_index]
 
 xtest = xxforall[testing_index,]
 ytest = y[testing_index]
-
-resamplerr=rbinom(length(ytest),1,0.13)
-balancing= c(which(ytest=='1'&resamplerr),which(ytest=='0'))
-blcd_ytest=ytest[balancing]
-blcd_xtest=xtest[balancing,]
 
 fit_xcount = glm(ytrain~.,data=xtrain,family = binomial(link='logit')); summary(fit_xcount)
 
