@@ -3,6 +3,7 @@
 # whenever I make any changes
 # Would each of them be saved as an independent version?
 # continue experimenting
+# Ok, one more time
 # ------------ <<Functions: Data Structurization for all users>> ------------
 
 # Step 1 - Getting cleaned full Registration Records
